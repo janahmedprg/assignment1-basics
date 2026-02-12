@@ -53,16 +53,19 @@ def train_bpe(
                 async_results.append(pool.apply_async(pre_tokenize, args=(chunk, special_tokens)))
             
             results = [r.get() for r in async_results]
+        
+    merged_dicts = {}
+    for r in results:
+        combined_tokens = set(merged_dicts.keys()) | set(r.keys())
+        merged_dicts = {k: merged_dicts.get(k, 0) + r.get(k, 0) for k in combined_tokens}
 
-        combined_tokens = {}
-        merged_dicts = {}
-        for r in results:
-            combined_tokens = set(combined_tokens.keys()) | set(r.keys())
-            merged_dicts = {k: merged_dicts.get(k, 0) + r.get(k, 0) for k in combined_tokens}
+    byte_pairs = {}
+    for key in merged_dicts.keys():
+        for i in range(len(key)-1):
+            byte_pair = (key[i], key[i+1])
+            get_key = byte_pairs.get(byte_pair, (0, []))
+            byte_pairs[byte_pair] = (get_key[0] + merged_dicts[key], get_key[1] + [key])
 
-        print(merged_dicts)
-
-
-
+    print(byte_pairs)
 
 train_bpe("/home/janahmed/Desktop/code/assignment1-basics/data/test_data.txt", 1000, ["<|endoftext|>"])
