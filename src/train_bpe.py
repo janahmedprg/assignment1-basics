@@ -54,18 +54,37 @@ def train_bpe(
             
             results = [r.get() for r in async_results]
         
-    merged_dicts = {}
+    pre_token_dict: dict[tuple[bytes], int] = {}
     for r in results:
-        combined_tokens = set(merged_dicts.keys()) | set(r.keys())
-        merged_dicts = {k: merged_dicts.get(k, 0) + r.get(k, 0) for k in combined_tokens}
+        combined_tokens = set(pre_token_dict.keys()) | set(r.keys())
+        pre_token_dict = {k: pre_token_dict.get(k, 0) + r.get(k, 0) for k in combined_tokens}
 
-    byte_pairs = {}
-    for key in merged_dicts.keys():
+    print(pre_token_dict)
+    byte_pairs: dict[tuple[tuple[bytes], tuple[bytes]], tuple[int, list[tuple[bytes]]]] = {}
+    for key in pre_token_dict.keys():
         for i in range(len(key)-1):
             byte_pair = (key[i], key[i+1])
             get_key = byte_pairs.get(byte_pair, (0, []))
-            byte_pairs[byte_pair] = (get_key[0] + merged_dicts[key], get_key[1] + [key])
+            byte_pairs[byte_pair] = (get_key[0] + pre_token_dict[key], get_key[1] + [key])
 
-    print(byte_pairs)
+    merge_list = []
+    merged_tokens = {}
+    for _ in range(vocab_size - 256 - len(special_tokens)):
+        sorted_byte_pairs = sorted(byte_pairs.items(), key=lambda item: (item[1][0], item[0]), reverse=True)
+        merge_list.append((bytes(sorted_byte_pairs[0][0][0]), bytes(sorted_byte_pairs[0][0][1])))
+        
+        most_freq_byte_pair_value = sorted_byte_pairs[0][1]
+
+        for pre_token in most_freq_byte_pair_value[1]:
+            merged_token = merged_tokens.get(pre_token, pre_token)
+            for i in range(len(merged_token) - 1):
+                if merged_token[i] == sorted_byte_pairs[0][0][0] and merged_token[i + 1] == sorted_byte_pairs[0][0][1]:
+                    if i != 0:
+                        byte_pairs[(merged_token[i-1], merged_token[i])][0] -= pre_token_dict[pre_token]
+                        if byte_pairs[(merged_token[i-1], merged_token[i])][0] == 0:
+                            del byte_pairs[(pre_token[i-1], pre_token[i])]
+                        byte_pairs[(merged_token[i-1], (merged_token[i], merged_token[i + 1]))] = 
+                        
 
 train_bpe("/home/janahmed/Desktop/code/assignment1-basics/data/test_data.txt", 1000, ["<|endoftext|>"])
+# list[tuple[tuple[bytes, bytes], tuple[int, list[tuple[bytes]]]]]
