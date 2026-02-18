@@ -84,7 +84,7 @@ def train_bpe(
     
     # Read file using parallel processing
     with open(input_path, "rb") as f:
-        num_processes = 16
+        num_processes = 32
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
 
         f.seek(boundaries[0])
@@ -156,3 +156,11 @@ def train_bpe(
         byte_pairs.deleteBytePair((sorted_byte_pairs[0][0][0], sorted_byte_pairs[0][0][1]))
 
     return (vocab, merge_list)
+
+bpe = train_bpe("/assignment1-basics/data/owt_train.txt", 32000, ["<|endoftext|>"])
+
+print(max(bpe[0].values(), key=len))
+
+with open('bpe_output.txt', 'w') as f:
+    f.write('Vocabulary = ' + str(bpe[0]) + '\n')
+    f.write('Merges = ' + str(bpe[1]) + '\n')
