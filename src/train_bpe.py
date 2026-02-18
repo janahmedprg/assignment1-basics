@@ -84,7 +84,7 @@ def train_bpe(
     
     # Read file using parallel processing
     with open(input_path, "rb") as f:
-        num_processes = 4
+        num_processes = 16
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
 
         f.seek(boundaries[0])
@@ -156,6 +156,3 @@ def train_bpe(
         byte_pairs.deleteBytePair((sorted_byte_pairs[0][0][0], sorted_byte_pairs[0][0][1]))
 
     return (vocab, merge_list)
-
-
-# print(train_bpe("/home/janahmed/Desktop/code/assignment1-basics/data/test_data.txt", 1000, ["<|endoftext|>"]))
