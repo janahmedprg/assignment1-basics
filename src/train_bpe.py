@@ -2,16 +2,18 @@ from cs336_basics.pretokenization_example import find_chunk_boundaries
 import regex as re
 from multiprocessing import Pool
 import os
+from typing import BinaryIO
+import heapq
 
 class BytePairMap:
 
-    def __init__(self, pre_token_dict: dict[tuple[int, ...], int]):
+    def __init__(self, pre_token_dict):
         self.byte_pairs_freq: dict[tuple[bytes, bytes], int] = {}
         self.byte_pairs_indices: dict[tuple[bytes, bytes], list[tuple[int, ...]]] = {}
 
         for key in pre_token_dict.keys():
             for i in range(len(key)-1):
-                byte_pair = (bytes([key[i]]), bytes([key[i+1]]))
+                byte_pair = (key[i].encode("utf-8"), key[i+1].encode("utf-8"))
                 get_freq_val = self.byte_pairs_freq.get(byte_pair, 0)
                 get_indices_val = self.byte_pairs_indices.get(byte_pair, [])
                 self.byte_pairs_freq[byte_pair] = get_freq_val + pre_token_dict[key]
@@ -43,25 +45,30 @@ class BytePairMap:
             return True
         return False
 
-
-
-def pre_tokenize(chunk: str, special_tokens: list[str]) -> dict[tuple[int, ...], int]:
-    special_tok_pattern = "|".join(re.escape(tok) for tok in special_tokens)
+def pre_tokenize(chunk: str, special_tokens: list[str]):
+    special_tok_pattern = f"({'|'.join(re.escape(tok) for tok in special_tokens)})"
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    PAT_RE = re.compile(PAT)
 
-    splitted_chunk = re.split(f"({special_tok_pattern})", chunk)
+    chunks = re.split(special_tok_pattern, chunk)
 
     token_freq_dict = {}
 
-    for chunk_split in splitted_chunk:
+    for chunk_split in chunks:
         if chunk_split in special_tokens:
             continue
 
-        for pre_token in re.finditer(PAT, chunk_split):
-            token_byte_tuple = tuple(pre_token.group().encode("utf-8"))
-            token_freq_dict[token_byte_tuple] = token_freq_dict.get(token_byte_tuple, 0) + 1
+        for m in PAT_RE.finditer(chunk_split):
+            pre_token = m.group()
+            token_freq_dict[pre_token] = token_freq_dict.get(pre_token, 0) + 1
 
     return token_freq_dict
+
+def pre_tokenize_job(corpus_path, start, end, special_tokens):
+    with open(corpus_path, 'rb') as file:
+        file.seek(start)
+        chunk = file.read(end - start)
+        return pre_tokenize(chunk, special_tokens)
 
 
 
@@ -70,6 +77,8 @@ def train_bpe(
     vocab_size: int,
     special_tokens: list[str]
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    NUM_PROCESSES = 12
+    N_CHUNKS = 36
     vocab = {}
 
     for i in range(len(special_tokens)):
@@ -81,28 +90,20 @@ def train_bpe(
         vocab[vocab_index + i] = bytes([i])
     
     vocab_index += 256
-    
-    # Read file using parallel processing
-    with open(input_path, "rb") as f:
-        num_processes = 32
-        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
 
-        f.seek(boundaries[0])
-
-        async_results = []
-        with Pool() as pool:
-            for start, end in zip(boundaries[:-1], boundaries[1:]): 
-                f.seek(start)
-                chunk = f.read(end - start).decode("utf-8", errors="ignore")
-                async_results.append(pool.apply_async(pre_tokenize, args=(chunk, special_tokens)))
-            
-            results = [r.get() for r in async_results]
-        
     # Start pre-tokenization
-    pre_token_dict: dict[tuple[int, ...], int] = {}
-    for r in results:
-        combined_tokens = set(pre_token_dict.keys()) | set(r.keys())
-        pre_token_dict = {k: pre_token_dict.get(k, 0) + r.get(k, 0) for k in combined_tokens}
+    chunk_ranges = []
+    with open(input_path, 'rb') as f:
+        chunks = find_chunk_boundaries(f, N_CHUNKS, "<|endoftext|>".encode("utf-8"))
+        for start, end in zip(chunks[:-1], chunks[1:]):
+            chunk_ranges.append((input_path, start, end, special_tokens))
+
+    pre_token_dict = {}
+    with Pool(NUM_PROCESSES) as p:
+        word_freq_shards = p.starmap(pre_tokenize_job, chunk_ranges)
+        for chunk_freq_map in word_freq_shards:
+            for token, freq in chunk_freq_map.items():
+                pre_token_dict[token] = pre_token_dict.get(token, 0) + freq
 
     # Make byte pairs
     byte_pairs = BytePairMap(pre_token_dict)
@@ -124,7 +125,7 @@ def train_bpe(
         # Iterate over indices
         for pre_token in most_freq_byte_pair_indices:
             # Check if index has any merges if not return unmerged pre-token
-            merged_pre_token = merged_pre_tokens.get(pre_token, tuple(bytes([b]) for b in pre_token))
+            merged_pre_token = merged_pre_tokens.get(pre_token, tuple(b for b in pre_token))
             # Iterate over (merged) bytes of the pre-token index to find the (merged) bytes pair
             new_merged_pre_token = ()
             i = 0
@@ -157,10 +158,15 @@ def train_bpe(
 
     return (vocab, merge_list)
 
-bpe = train_bpe("/assignment1-basics/data/owt_train.txt", 32000, ["<|endoftext|>"])
 
-print(max(bpe[0].values(), key=len))
+# script_dir = os.path.dirname(os.path.abspath(__file__))
 
-with open('bpe_output.txt', 'w') as f:
-    f.write('Vocabulary = ' + str(bpe[0]) + '\n')
-    f.write('Merges = ' + str(bpe[1]) + '\n')
+# file_path = os.path.join(script_dir, "..", "data/test_data.txt")
+
+# bpe = train_bpe(file_path, 10000, ["<|endoftext|>"])
+
+# # print(max(bpe[0].values(), key=len))
+
+# with open('bpe_output.txt', 'w') as f:
+#     f.write('Vocabulary = ' + str(bpe[0]) + '\n')
+#     f.write('Merges = ' + str(bpe[1]) + '\n')
