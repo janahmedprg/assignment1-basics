@@ -32,13 +32,10 @@ class BytePairMap:
         if self.byte_pairs_freq[byte_pair] == 0:
             del self.byte_pairs_freq[byte_pair]
             del self.byte_pairs_indices[byte_pair]
-        else:
-            self.byte_pairs_heap.push((byte_pair, self.byte_pairs_freq[byte_pair]))
     
     def addBytePair(self, byte_pair: tuple[bytes, bytes], freq: int, index: str):
         self.byte_pairs_freq[byte_pair] = freq + self.byte_pairs_freq.get(byte_pair, 0)
         self.byte_pairs_indices.setdefault(byte_pair, set()).add(index)
-        self.byte_pairs_heap.push((byte_pair, self.byte_pairs_freq[byte_pair]))
     
     def deleteBytePair(self, byte_pair: tuple[bytes, bytes]):
         del self.byte_pairs_freq[byte_pair]
@@ -48,6 +45,11 @@ class BytePairMap:
         if len(self.byte_pairs_freq) == 0:
             return True
         return False
+    
+    def update_heap(self, mods):
+        for bp in mods:
+            if bp in self.byte_pairs_freq:
+                self.byte_pairs_heap.push((bp, self.byte_pairs_freq[bp]))
 
 def pre_tokenize(chunk_bytes: bytes, special_tokens: list[str]) -> dict[bytes, int]:
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -122,6 +124,7 @@ def train_bpe(
         
         most_freq_byte_pair_indices = byte_pairs.getIndices((max_byte_pairs[0], max_byte_pairs[1]))
 
+        mods = set()
         # Iterate over indices
         for pre_token in most_freq_byte_pair_indices:
             # Check if index has any merges if not return unmerged pre-token
@@ -137,6 +140,8 @@ def train_bpe(
                         byte_pairs.subtractFreq((new_merged_pre_token[-1], merged_pre_token[i]), pre_token_dict[pre_token])
                         # Add merged byte pair with left byte to byte_pairs
                         byte_pairs.addBytePair((new_merged_pre_token[-1], merged_pre_token[i] + merged_pre_token[i + 1]), pre_token_dict[pre_token], pre_token)
+                        mods.add((new_merged_pre_token[-1], merged_pre_token[i]))
+                        mods.add((new_merged_pre_token[-1], merged_pre_token[i] + merged_pre_token[i + 1]))
                                                 
                     # Make appropriate changes to the byte to the right of the pair
                     if i != len(merged_pre_token) - 2:
@@ -144,6 +149,8 @@ def train_bpe(
                         byte_pairs.subtractFreq((merged_pre_token[i+1], merged_pre_token[i+2]), pre_token_dict[pre_token])
                         # Add merged byte pair with right byte to byte_pairs
                         byte_pairs.addBytePair((merged_pre_token[i] + merged_pre_token[i+1], merged_pre_token[i + 2]), pre_token_dict[pre_token], pre_token)
+                        mods.add((merged_pre_token[i+1], merged_pre_token[i+2]))
+                        mods.add((merged_pre_token[i] + merged_pre_token[i+1], merged_pre_token[i + 2]))
                         
                     new_merged_pre_token += (merged_pre_token[i] + merged_pre_token[i+1],)
                     i += 1
@@ -155,15 +162,16 @@ def train_bpe(
             merged_pre_tokens[pre_token] = new_merged_pre_token
 
         byte_pairs.deleteBytePair((max_byte_pairs[0], max_byte_pairs[1]))
+        byte_pairs.update_heap(mods)
 
     return (vocab, merge_list)
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-file_path = os.path.join(script_dir, "..", "data/owt_train.txt")
+file_path = os.path.join(script_dir, "..", "data/TinyStoriesV2-GPT4-train.txt")
 
-bpe = train_bpe(file_path, 32000, ["<|endoftext|>"])
+bpe = train_bpe(file_path, 10000, ["<|endoftext|>"])
 
 # print(max(bpe[0].values(), key=len))
 
