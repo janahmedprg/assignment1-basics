@@ -169,9 +169,9 @@ def train_bpe(
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-file_path = os.path.join(script_dir, "..", "data/TinyStoriesV2-GPT4-train.txt")
+file_path = os.path.join(script_dir, "..", "data/owt_train.txt")
 
-bpe = train_bpe(file_path, 10000, ["<|endoftext|>"])
+bpe = train_bpe(file_path, 32000, ["<|endoftext|>"])
 
 # print(max(bpe[0].values(), key=len))
 
