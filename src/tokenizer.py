@@ -85,7 +85,57 @@ class Tokenizer:
 
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
-        pass
+        buffer = ""
+
+        for chunk in iterable:
+            if not chunk:
+                continue
+
+            buffer += chunk
+            partial_special_len = self._partial_special_suffix_len(buffer)
+            processable = buffer[: len(buffer) - partial_special_len]
+
+            if self.special_tokens:
+                last_end = 0
+                for special_match in self.special_token_re.finditer(processable):
+                    segment = processable[last_end : special_match.start()]
+                    for m in self.pat_re.finditer(segment):
+                        yield from self._encode_text_segment(m.group())
+                    yield self.encode_map[special_match.group().encode("utf-8")]
+                    last_end = special_match.end()
+                trailing_text = processable[last_end:]
+            else:
+                trailing_text = processable
+
+            matches = list(self.pat_re.finditer(trailing_text))
+            for pretoken_match in matches[:-1]:
+                yield from self._encode_text_segment(pretoken_match.group())
+
+            if matches:
+                buffer = trailing_text[matches[-1].start():] + buffer[len(processable):]
+            else:
+                buffer = trailing_text + buffer[len(processable):]
+
+        if buffer:
+            yield from self.encode(buffer)
+
+    def _encode_text_segment(self, text: str) -> Iterator[int]:
+        merged_pretoken = self._merge_pretoken(text)
+        yield from (self.encode_map[b] for b in merged_pretoken)
+
+    def _partial_special_suffix_len(self, text: str) -> int:
+        if not self.special_tokens:
+            return 0
+
+        max_suffix_len = 0
+        # Note the special_tokens are sorted by length descending order
+        max_check_len = min(len(text), len(self.special_tokens[0]) - 1)
+        for suffix_len in range(1, max_check_len + 1):
+            suffix = text[-suffix_len:]
+            if any(tok.startswith(suffix) for tok in self.special_tokens):
+                max_suffix_len = suffix_len
+
+        return max_suffix_len
 
     def decode(self, ids: list[int]) -> str:
         bytes_str = b"".join(
@@ -95,12 +145,12 @@ class Tokenizer:
         return bytes_str.decode("utf-8", errors="replace")
 
 
-# script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# vocab_path = os.path.join(script_dir, "..", "vocab.txt")
-# merges_path = os.path.join(script_dir, "..", "merges.txt")
+vocab_path = os.path.join(script_dir, "..", "vocab.txt")
+merges_path = os.path.join(script_dir, "..", "merges.txt")
 
-# tokenizer = Tokenizer.from_files(vocab_path, merges_path, special_tokens=["<|endoftext|>", "<|endoftext|><|endoftext|>"])
+tokenizer = Tokenizer.from_files(vocab_path, merges_path, special_tokens=["<|endoftext|>", "<|endoftext|><|endoftext|>"])
 
-# print(tokenizer.encode("Hello, how <|endoftext|><|endoftext|> are you?<|endoftext|>"))
-# print(tokenizer.decode([1202, 45, 763, 33, 0, 0, 488, 350, 64, 0]))
+print(tokenizer.encode("Hello, how <|endoftext|><|endoftext|> are you?<|endoftext|>"))
+print(tokenizer.decode([1202, 45, 763, 33, 0, 0, 488, 350, 64, 0]))
