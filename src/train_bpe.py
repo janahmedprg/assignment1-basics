@@ -165,17 +165,3 @@ def train_bpe(
         byte_pairs.update_heap(mods)
 
     return (vocab, merge_list)
-
-
-# script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# file_path = os.path.join(script_dir, "..", "data/TinyStoriesV2-GPT4-valid.txt")
-
-# bpe = train_bpe(file_path, 10000, ["<|endoftext|>"])
-
-
-# with open('vocab.txt', 'w') as f:
-#     f.write(str(bpe[0]))
-
-# with open('merges.txt', 'w') as f:
-#     f.write(str(bpe[1]))

@@ -1,7 +1,6 @@
 from typing import Iterable, Iterator
 import ast
 import regex as re
-import os
 
 class Tokenizer:
 
@@ -143,14 +142,3 @@ class Tokenizer:
             for bid in ids
         )
         return bytes_str.decode("utf-8", errors="replace")
-
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
-vocab_path = os.path.join(script_dir, "..", "vocab.txt")
-merges_path = os.path.join(script_dir, "..", "merges.txt")
-
-tokenizer = Tokenizer.from_files(vocab_path, merges_path, special_tokens=["<|endoftext|>", "<|endoftext|><|endoftext|>"])
-
-print(tokenizer.encode("Hello, how <|endoftext|><|endoftext|> are you?<|endoftext|>"))
-print(tokenizer.decode([1202, 45, 763, 33, 0, 0, 488, 350, 64, 0]))
