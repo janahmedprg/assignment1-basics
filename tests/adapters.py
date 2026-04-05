@@ -19,6 +19,7 @@ from src.softmax import Softmax
 from src.scaled_dot_product_attention import ScaledDotProductAttention
 from src.multihead_self_attention import MultiHeadSelfAttention
 from src.transformer_block import TransformerBlock
+from src.transformer_lm import TransformerLM
 
 
 def run_linear(
@@ -409,7 +410,27 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    head_dim = d_model // num_heads
+    rope = RotaryPositionalEmbedding(rope_theta, head_dim, context_length)
+    transformer_lm = TransformerLM(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        num_layers=num_layers,
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        rope=rope
+    )
+    new_weights = {
+        k.replace("output_proj.weight", "o_proj.W")
+         .replace("w1.weight", "W1")
+         .replace("w2.weight", "W2")
+         .replace("w3.weight", "W3")
+         .replace(".weight", ".W"): v
+        for k, v in weights.items()
+    }
+    transformer_lm.load_state_dict(new_weights)
+    return transformer_lm.forward(in_indices)
 
 
 def run_rmsnorm(
