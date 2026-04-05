@@ -53,7 +53,6 @@ class TransformerLM(nn.Module):
             device=device,
             dtype=dtype
         )
-        self.softmax = Softmax()
 
     def forward(self, x):
         y = self.token_embeddings(x)
